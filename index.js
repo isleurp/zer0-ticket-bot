@@ -19,7 +19,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
   ],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel, Partials.Message, Partials.User],
 });
 
 const ticketMap = new Map(); // userID -> salonID
@@ -29,10 +29,24 @@ client.once("ready", () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 });
 
-// Commande !setup
+// 💡 Commande !help
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
 
+  if (msg.content.toLowerCase() === "!help") {
+    const embed = new EmbedBuilder()
+      .setColor("#2b2d31")
+      .setTitle("📘 zer0 Ticket Bot - Liste des commandes")
+      .setDescription(
+        "**Commandes disponibles :**\n" +
+        "🎫 `!setup` → Envoie le message avec le bouton pour créer un ticket\n" +
+        "ℹ️ `!help` → Affiche cette page d’aide"
+      )
+      .setFooter({ text: "zer0 Ticket System" });
+    return msg.reply({ embeds: [embed] });
+  }
+
+  // 💠 Commande !setup (admin)
   if (msg.content.toLowerCase() === "!setup") {
     if (!msg.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return msg.reply("❌ Tu n’as pas la permission d’utiliser cette commande.");
@@ -41,7 +55,8 @@ client.on("messageCreate", async (msg) => {
     const embed = new EmbedBuilder()
       .setColor("#2b2d31")
       .setTitle("🎫 Support - zer0")
-      .setDescription("Pour créer un ticket, clique sur le bouton ci-dessous puis choisis le type de demande.");
+      .setDescription("Clique sur le bouton ci-dessous pour créer un ticket avec le staff.")
+      .setFooter({ text: "zer0 Ticket System" });
 
     const bouton = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -55,14 +70,13 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// Interaction bouton “Créer un ticket”
+// 🎫 Interaction bouton “Créer un ticket”
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (interaction.customId !== "open_ticket_menu") return;
+  if (!interaction.isButton() || interaction.customId !== "open_ticket_menu") return;
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
-    .setPlaceholder("Choisir le sujet de votre demande")
+    .setPlaceholder("Choisis la catégorie de ton ticket")
     .addOptions([
       { label: "Dossier entreprises en jeu", value: "entreprise", emoji: "💼" },
       { label: "Dossier organisations en jeu", value: "organisation", emoji: "🛠️" },
@@ -81,10 +95,9 @@ client.on("interactionCreate", async (interaction) => {
   await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// Création du ticket
+// 🏗️ Création du ticket
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isStringSelectMenu()) return;
-  if (interaction.customId !== "ticket_category") return;
+  if (!interaction.isStringSelectMenu() || interaction.customId !== "ticket_category") return;
 
   const guild = interaction.guild;
   const category = guild.channels.cache.find((c) => c.name === "tickets" && c.type === 4);
@@ -102,13 +115,13 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Génération d’un ID aléatoire à 4 chiffres
+  // Génération d’un ID aléatoire
   const ticketId = Math.floor(1000 + Math.random() * 9000);
   const type = interaction.values[0];
-  const channelName = `ticket-${ticketId}-${interaction.user.username}`;
+  const channelName = `ticket-${ticketId}-${interaction.user.username}`.toLowerCase();
 
   const channel = await guild.channels.create({
-    name: channelName.toLowerCase(),
+    name: channelName,
     type: 0,
     parent: category.id,
     permissionOverwrites: [
@@ -147,10 +160,9 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// Fermeture du ticket
+// 🔒 Fermeture du ticket
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (interaction.customId !== "close_ticket") return;
+  if (!interaction.isButton() || interaction.customId !== "close_ticket") return;
 
   const userId = reverseMap.get(interaction.channel.id);
   const user = userId ? await client.users.fetch(userId).catch(() => null) : null;
@@ -174,7 +186,7 @@ client.on("interactionCreate", async (interaction) => {
   }, 5000);
 });
 
-// Staff → message MP utilisateur (affiche le pseudo du staff)
+// 👥 Staff → message privé à l’utilisateur
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot || !msg.guild) return;
 
@@ -189,7 +201,7 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// Utilisateur → message salon staff
+// 📩 Utilisateur → message salon staff
 client.on("messageCreate", async (msg) => {
   if (msg.guild || msg.author.bot) return;
 
