@@ -12,8 +12,9 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
-const STAFF_ROLE_ID = "1429609760575193266"; // rôle staff
+const STAFF_ROLE_ID = "1429609760575193266"; // Rôle staff
 
+// ⚡ Initialisation du client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -24,12 +25,20 @@ const client = new Client({
   partials: [Partials.Channel, Partials.User],
 });
 
-const ticketMap = new Map();  // userID -> salonID
-const reverseMap = new Map(); // salonID -> userID
+const ticketMap = new Map();     // userID → salonID
+const reverseMap = new Map();    // salonID → userID
 
 client.once("ready", () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 });
+
+// 🧱 Anti-crash global
+process.on("unhandledRejection", (err) =>
+  console.log("⚠️ Erreur non gérée :", err)
+);
+process.on("uncaughtException", (err) =>
+  console.log("⚠️ Exception non capturée :", err)
+);
 
 // 📘 Commande !help
 client.on("messageCreate", async (msg) => {
@@ -39,22 +48,22 @@ client.on("messageCreate", async (msg) => {
   if (cmd === "!help") {
     const embed = new EmbedBuilder()
       .setColor("#2b2d31")
-      .setTitle("📘 zer0 Ticket Bot - Commandes disponibles")
+      .setTitle("📘 zer0 Ticket Bot - Commandes")
       .setDescription(
-        "🎫 `!setup` → Envoie le message avec le bouton pour ouvrir un ticket *(staff/admin uniquement)*\n" +
+        "🎫 `!setup` → Envoie le message de création de ticket *(staff/admin)*\n" +
         "ℹ️ `!help` → Affiche cette page d’aide"
       )
       .setFooter({ text: "zer0 Ticket System" });
+
     return msg.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
   }
 
-  // 🛠 Commande !setup (staff ou admin uniquement)
+  // 🛠 !setup (staff ou admin)
   if (cmd === "!setup") {
     const isStaff = msg.member.roles.cache.has(STAFF_ROLE_ID);
     const isAdmin = msg.member.permissions.has(PermissionsBitField.Flags.Administrator);
-    if (!isStaff && !isAdmin) {
+    if (!isStaff && !isAdmin)
       return msg.reply("❌ Seuls les membres du staff ou les administrateurs peuvent utiliser cette commande.");
-    }
 
     const embed = new EmbedBuilder()
       .setColor("#2b2d31")
@@ -74,7 +83,7 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// 🎫 Bouton principal “Créer un ticket”
+// 🎫 Bouton principal
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton() || interaction.customId !== "open_ticket_menu") return;
 
@@ -106,7 +115,6 @@ client.on("interactionCreate", async (interaction) => {
 
   const guild = interaction.guild;
   const category = guild.channels.cache.find((c) => c.name === "tickets" && c.type === 4);
-
   if (!category) {
     return interaction.reply({
       content: "❌ Crée une catégorie appelée **tickets** avant d’ouvrir un ticket.",
@@ -166,12 +174,13 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// 🔒 Fermeture du ticket
+// 🔒 Fermeture du ticket (corrigée)
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton() || interaction.customId !== "close_ticket") return;
 
   const userId = reverseMap.get(interaction.channel.id);
   const user = userId ? await client.users.fetch(userId).catch(() => null) : null;
+  const channelId = interaction.channel.id; // sauvegarde avant suppression
 
   await interaction.reply({ content: "🔒 Fermeture du ticket dans 5 secondes...", ephemeral: true });
 
@@ -183,9 +192,9 @@ client.on("interactionCreate", async (interaction) => {
 
   setTimeout(async () => {
     await interaction.channel.delete().catch(() => null);
-    if (userId) {
+    if (userId && channelId) {
       ticketMap.delete(userId);
-      reverseMap.delete(interaction.channel.id);
+      reverseMap.delete(channelId);
     }
   }, 5000);
 });
@@ -214,7 +223,7 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// 🧹 Détection suppression manuelle du ticket
+// 🧹 Suppression manuelle du ticket
 client.on("channelDelete", async (channel) => {
   const userId = reverseMap.get(channel.id);
   if (userId) {
