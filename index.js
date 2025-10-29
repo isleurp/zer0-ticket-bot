@@ -12,9 +12,9 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
-const STAFF_ROLE_ID = "1429609760575193266"; // Rôle staff
+const STAFF_ROLE_ID = "1429609760575193266"; // rôle staff
 
-// ⚡ Initialisation du client
+// ⚡ Client optimisé
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -25,8 +25,8 @@ const client = new Client({
   partials: [Partials.Channel, Partials.User],
 });
 
-const ticketMap = new Map();     // userID → salonID
-const reverseMap = new Map();    // salonID → userID
+const ticketMap = new Map();
+const reverseMap = new Map();
 
 client.once("ready", () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
@@ -54,11 +54,10 @@ client.on("messageCreate", async (msg) => {
         "ℹ️ `!help` → Affiche cette page d’aide"
       )
       .setFooter({ text: "zer0 Ticket System" });
-
     return msg.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
   }
 
-  // 🛠 !setup (staff ou admin)
+  // 🛠 Commande !setup (staff ou admin)
   if (cmd === "!setup") {
     const isStaff = msg.member.roles.cache.has(STAFF_ROLE_ID);
     const isAdmin = msg.member.permissions.has(PermissionsBitField.Flags.Administrator);
@@ -114,10 +113,14 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu() || interaction.customId !== "ticket_category") return;
 
   const guild = interaction.guild;
-  const category = guild.channels.cache.find((c) => c.name === "tickets" && c.type === 4);
+  // 🔍 Recherche la catégorie "💌 | TICKETS"
+  const category = guild.channels.cache.find(
+    (c) => c.name === "💌 | TICKETS" && c.type === 4
+  );
+
   if (!category) {
     return interaction.reply({
-      content: "❌ Crée une catégorie appelée **tickets** avant d’ouvrir un ticket.",
+      content: "❌ Crée une catégorie appelée **💌 | TICKETS** avant d’ouvrir un ticket.",
       ephemeral: true,
     });
   }
@@ -174,13 +177,13 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// 🔒 Fermeture du ticket (corrigée)
+// 🔒 Fermeture du ticket (corrigée et sécurisée)
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton() || interaction.customId !== "close_ticket") return;
 
   const userId = reverseMap.get(interaction.channel.id);
   const user = userId ? await client.users.fetch(userId).catch(() => null) : null;
-  const channelId = interaction.channel.id; // sauvegarde avant suppression
+  const channelId = interaction.channel.id;
 
   await interaction.reply({ content: "🔒 Fermeture du ticket dans 5 secondes...", ephemeral: true });
 
