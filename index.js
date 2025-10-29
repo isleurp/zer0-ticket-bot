@@ -13,6 +13,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const STAFF_ROLE_ID = "1429609760575193266"; // rôle staff
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -20,37 +21,39 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.User],
+  partials: [Partials.Channel, Partials.User],
 });
 
-const ticketMap = new Map(); // userID -> salonID
+const ticketMap = new Map();  // userID -> salonID
 const reverseMap = new Map(); // salonID -> userID
 
 client.once("ready", () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 });
 
-// 💡 Commande !help
+// 📘 Commande !help
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
+  const cmd = msg.content.toLowerCase();
 
-  if (msg.content.toLowerCase() === "!help") {
+  if (cmd === "!help") {
     const embed = new EmbedBuilder()
       .setColor("#2b2d31")
-      .setTitle("📘 zer0 Ticket Bot - Liste des commandes")
+      .setTitle("📘 zer0 Ticket Bot - Commandes disponibles")
       .setDescription(
-        "**Commandes disponibles :**\n" +
-        "🎫 `!setup` → Envoie le message avec le bouton pour créer un ticket (staff uniquement)\n" +
+        "🎫 `!setup` → Envoie le message avec le bouton pour ouvrir un ticket *(staff/admin uniquement)*\n" +
         "ℹ️ `!help` → Affiche cette page d’aide"
       )
       .setFooter({ text: "zer0 Ticket System" });
-    return msg.reply({ embeds: [embed] });
+    return msg.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
   }
 
-  // 💠 Commande !setup (seulement pour les STAFFS)
-  if (msg.content.toLowerCase() === "!setup") {
-    if (!msg.member.roles.cache.has(STAFF_ROLE_ID)) {
-      return msg.reply("❌ Seuls les membres du staff peuvent utiliser cette commande.");
+  // 🛠 Commande !setup (staff ou admin uniquement)
+  if (cmd === "!setup") {
+    const isStaff = msg.member.roles.cache.has(STAFF_ROLE_ID);
+    const isAdmin = msg.member.permissions.has(PermissionsBitField.Flags.Administrator);
+    if (!isStaff && !isAdmin) {
+      return msg.reply("❌ Seuls les membres du staff ou les administrateurs peuvent utiliser cette commande.");
     }
 
     const embed = new EmbedBuilder()
@@ -67,13 +70,15 @@ client.on("messageCreate", async (msg) => {
     );
 
     await msg.channel.send({ embeds: [embed], components: [bouton] });
-    return msg.reply("✅ Message du système de tickets envoyé !");
+    return msg.react("✅");
   }
 });
 
-// 🎫 Interaction bouton “Créer un ticket”
+// 🎫 Bouton principal “Créer un ticket”
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton() || interaction.customId !== "open_ticket_menu") return;
+
+  await interaction.deferReply({ ephemeral: true });
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
@@ -87,13 +92,12 @@ client.on("interactionCreate", async (interaction) => {
     ]);
 
   const row = new ActionRowBuilder().addComponents(menu);
-
   const embed = new EmbedBuilder()
     .setColor("#2b2d31")
     .setTitle("📩 Choix du sujet")
     .setDescription("Merci de sélectionner le sujet correspondant à votre demande.");
 
-  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  await interaction.editReply({ embeds: [embed], components: [row] });
 });
 
 // 🏗️ Création du ticket
@@ -102,6 +106,7 @@ client.on("interactionCreate", async (interaction) => {
 
   const guild = interaction.guild;
   const category = guild.channels.cache.find((c) => c.name === "tickets" && c.type === 4);
+
   if (!category) {
     return interaction.reply({
       content: "❌ Crée une catégorie appelée **tickets** avant d’ouvrir un ticket.",
@@ -116,7 +121,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // Génération d’un ID aléatoire
   const ticketId = Math.floor(1000 + Math.random() * 9000);
   const type = interaction.values[0];
   const channelName = `ticket-${ticketId}-${interaction.user.username}`.toLowerCase();
@@ -158,7 +162,7 @@ client.on("interactionCreate", async (interaction) => {
   try {
     await interaction.user.send(`🎫 Ton ticket **#${ticketId}** (${type}) a été créé avec succès !`);
   } catch {
-    console.log(`Impossible d’envoyer un MP à ${interaction.user.username}`);
+    console.log(`⚠️ Impossible d’envoyer un MP à ${interaction.user.username}`);
   }
 });
 
@@ -174,9 +178,7 @@ client.on("interactionCreate", async (interaction) => {
   if (user) {
     try {
       await user.send("✅ Ton ticket a été fermé par le staff. Merci d’avoir contacté le support.");
-    } catch {
-      console.log(`Impossible d'envoyer un MP à ${userId}`);
-    }
+    } catch {}
   }
 
   setTimeout(async () => {
@@ -188,25 +190,21 @@ client.on("interactionCreate", async (interaction) => {
   }, 5000);
 });
 
-// 👥 Staff → message MP à l’utilisateur
+// 👥 Staff → MP à l’utilisateur
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot || !msg.guild) return;
-
   const userId = reverseMap.get(msg.channel.id);
   if (!userId) return;
 
   const user = await client.users.fetch(userId).catch(() => null);
   if (user) {
-    await user
-      .send(`💬 Staff (${msg.author.username}) : ${msg.content}`)
-      .catch(() => console.log("MP impossible à envoyer"));
+    await user.send(`💬 Staff (${msg.author.username}) : ${msg.content}`).catch(() => {});
   }
 });
 
-// 📩 Utilisateur → message relayé au staff
+// 📩 Utilisateur → message vers staff
 client.on("messageCreate", async (msg) => {
   if (msg.guild || msg.author.bot) return;
-
   const channelId = ticketMap.get(msg.author.id);
   if (!channelId) return;
 
@@ -216,15 +214,13 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// 🧹 Détection de suppression manuelle du ticket
+// 🧹 Détection suppression manuelle du ticket
 client.on("channelDelete", async (channel) => {
-  if (!reverseMap.has(channel.id)) return;
-
   const userId = reverseMap.get(channel.id);
   if (userId) {
     ticketMap.delete(userId);
     reverseMap.delete(channel.id);
-    console.log(`🧹 Ticket de ${userId} supprimé manuellement, libéré.`);
+    console.log(`🧹 Ticket supprimé manuellement -> libéré pour ${userId}`);
   }
 });
 
