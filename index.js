@@ -12,6 +12,7 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
+const STAFF_ROLE_ID = "1429609760575193266"; // rôle staff
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -39,17 +40,17 @@ client.on("messageCreate", async (msg) => {
       .setTitle("📘 zer0 Ticket Bot - Liste des commandes")
       .setDescription(
         "**Commandes disponibles :**\n" +
-        "🎫 `!setup` → Envoie le message avec le bouton pour créer un ticket\n" +
+        "🎫 `!setup` → Envoie le message avec le bouton pour créer un ticket (staff uniquement)\n" +
         "ℹ️ `!help` → Affiche cette page d’aide"
       )
       .setFooter({ text: "zer0 Ticket System" });
     return msg.reply({ embeds: [embed] });
   }
 
-  // 💠 Commande !setup (admin)
+  // 💠 Commande !setup (seulement pour les STAFFS)
   if (msg.content.toLowerCase() === "!setup") {
-    if (!msg.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return msg.reply("❌ Tu n’as pas la permission d’utiliser cette commande.");
+    if (!msg.member.roles.cache.has(STAFF_ROLE_ID)) {
+      return msg.reply("❌ Seuls les membres du staff peuvent utiliser cette commande.");
     }
 
     const embed = new EmbedBuilder()
@@ -127,6 +128,7 @@ client.on("interactionCreate", async (interaction) => {
     permissionOverwrites: [
       { id: guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
       { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+      { id: STAFF_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
     ],
   });
 
@@ -186,7 +188,7 @@ client.on("interactionCreate", async (interaction) => {
   }, 5000);
 });
 
-// 👥 Staff → message privé à l’utilisateur
+// 👥 Staff → message MP à l’utilisateur
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot || !msg.guild) return;
 
@@ -201,7 +203,7 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// 📩 Utilisateur → message salon staff
+// 📩 Utilisateur → message relayé au staff
 client.on("messageCreate", async (msg) => {
   if (msg.guild || msg.author.bot) return;
 
@@ -211,6 +213,18 @@ client.on("messageCreate", async (msg) => {
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (channel) {
     await channel.send(`📩 ${msg.author.username} : ${msg.content}`);
+  }
+});
+
+// 🧹 Détection de suppression manuelle du ticket
+client.on("channelDelete", async (channel) => {
+  if (!reverseMap.has(channel.id)) return;
+
+  const userId = reverseMap.get(channel.id);
+  if (userId) {
+    ticketMap.delete(userId);
+    reverseMap.delete(channel.id);
+    console.log(`🧹 Ticket de ${userId} supprimé manuellement, libéré.`);
   }
 });
 
