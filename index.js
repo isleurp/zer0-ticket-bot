@@ -23,12 +23,13 @@ const client = new Client({
 });
 
 const ticketMap = new Map(); // userID -> salonID
+const reverseMap = new Map(); // salonID -> userID
 
 client.once("ready", () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 });
 
-// Commande !setup pour envoyer le menu principal
+// Commande !setup
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
 
@@ -54,7 +55,7 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// Interaction avec le bouton “Créer un ticket”
+// Interaction bouton “Créer un ticket”
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "open_ticket_menu") return;
@@ -80,7 +81,7 @@ client.on("interactionCreate", async (interaction) => {
   await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 });
 
-// Quand un utilisateur choisit une catégorie
+// Création du ticket
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId !== "ticket_category") return;
@@ -101,8 +102,10 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
+  // Génération d’un ID aléatoire à 4 chiffres
+  const ticketId = Math.floor(1000 + Math.random() * 9000);
   const type = interaction.values[0];
-  const channelName = `ticket-${type}-${interaction.user.username}`;
+  const channelName = `ticket-${ticketId}-${interaction.user.username}`;
 
   const channel = await guild.channels.create({
     name: channelName.toLowerCase(),
@@ -115,16 +118,17 @@ client.on("interactionCreate", async (interaction) => {
   });
 
   ticketMap.set(interaction.user.id, channel.id);
+  reverseMap.set(channel.id, interaction.user.id);
 
   await interaction.reply({
-    content: `🎫 Ton ticket **${type}** a été créé : ${channel}`,
+    content: `🎫 Ton ticket **#${ticketId}** (${type}) a été créé : ${channel}`,
     ephemeral: true,
   });
 
   const ticketEmbed = new EmbedBuilder()
     .setColor("#2b2d31")
-    .setTitle("📩 Nouveau Ticket")
-    .setDescription(`Ticket créé par <@${interaction.user.id}> (${type})`)
+    .setTitle(`📩 Ticket #${ticketId}`)
+    .setDescription(`Type : **${type}**\nCréé par <@${interaction.user.id}>`)
     .setFooter({ text: "zer0 Ticket System" });
 
   const closeBtn = new ActionRowBuilder().addComponents(
@@ -135,6 +139,12 @@ client.on("interactionCreate", async (interaction) => {
   );
 
   await channel.send({ embeds: [ticketEmbed], components: [closeBtn] });
+
+  try {
+    await interaction.user.send(`🎫 Ton ticket **#${ticketId}** (${type}) a été créé avec succès !`);
+  } catch {
+    console.log(`Impossible d’envoyer un MP à ${interaction.user.username}`);
+  }
 });
 
 // Fermeture du ticket
@@ -142,7 +152,7 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "close_ticket") return;
 
-  const userId = [...ticketMap.entries()].find(([, ch]) => ch === interaction.channel.id)?.[0];
+  const userId = reverseMap.get(interaction.channel.id);
   const user = userId ? await client.users.fetch(userId).catch(() => null) : null;
 
   await interaction.reply({ content: "🔒 Fermeture du ticket dans 5 secondes...", ephemeral: true });
@@ -157,8 +167,39 @@ client.on("interactionCreate", async (interaction) => {
 
   setTimeout(async () => {
     await interaction.channel.delete().catch(() => null);
-    if (userId) ticketMap.delete(userId);
+    if (userId) {
+      ticketMap.delete(userId);
+      reverseMap.delete(interaction.channel.id);
+    }
   }, 5000);
+});
+
+// Staff → message MP utilisateur (affiche le pseudo du staff)
+client.on("messageCreate", async (msg) => {
+  if (msg.author.bot || !msg.guild) return;
+
+  const userId = reverseMap.get(msg.channel.id);
+  if (!userId) return;
+
+  const user = await client.users.fetch(userId).catch(() => null);
+  if (user) {
+    await user
+      .send(`💬 Staff (${msg.author.username}) : ${msg.content}`)
+      .catch(() => console.log("MP impossible à envoyer"));
+  }
+});
+
+// Utilisateur → message salon staff
+client.on("messageCreate", async (msg) => {
+  if (msg.guild || msg.author.bot) return;
+
+  const channelId = ticketMap.get(msg.author.id);
+  if (!channelId) return;
+
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (channel) {
+    await channel.send(`📩 ${msg.author.username} : ${msg.content}`);
+  }
 });
 
 client.login(process.env.TOKEN);
